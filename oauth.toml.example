@@ -1,0 +1,4 @@
+[client.foo]
+  base   = "https://oauth.foo.example.com/v2"
+  id     = "c0b26dea-2846-4db7-a21b-c40d6ecfd20e"
+  secret = "hunter2"
