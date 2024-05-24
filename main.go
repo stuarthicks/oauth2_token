@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/mitchellh/go-homedir"
@@ -76,56 +77,81 @@ func main() {
 		os.Exit(1)
 	}
 
-	var data = url.Values{}
-	data.Set("grant_type", "client_credentials")
+	var cacheFile = getCacheFilePath(client.Base, client.Id)
 
-	req, err := http.NewRequest(http.MethodPost, client.Base, strings.NewReader(data.Encode()))
-	if err != nil {
-		slog.Error(
-			"failed to create http request",
-			"error", err.Error(),
-		)
-		os.Exit(1)
+	if cacheExpired(cacheFile) {
+		var data = url.Values{}
+		data.Set("grant_type", "client_credentials")
+
+		req, err := http.NewRequest(http.MethodPost, client.Base, strings.NewReader(data.Encode()))
+		if err != nil {
+			slog.Error(
+				"failed to create http request",
+				"error", err.Error(),
+			)
+			os.Exit(1)
+		}
+
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(client.Id+":"+client.Secret)))
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			slog.Error(
+				"failed to perform http request",
+				"error", err.Error(),
+			)
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			slog.Error(
+				"failed to read response body",
+				"error", err.Error(),
+			)
+			os.Exit(1)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			slog.Error(
+				"failed to obtain oauth access token",
+				"status_code", resp.StatusCode,
+				"response_body", string(respBody),
+			)
+			os.Exit(1)
+		}
+
+		f, err := os.Create(cacheFile)
+		if err != nil {
+			slog.Error(
+				"failed to write cache file",
+				"file", f,
+				"error", err.Error(),
+			)
+			os.Exit(1)
+		}
+		_, _ = f.Write(respBody)
 	}
 
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(client.Id+":"+client.Secret)))
-
-	resp, err := http.DefaultClient.Do(req)
+	bs, err := os.ReadFile(cacheFile)
 	if err != nil {
 		slog.Error(
-			"failed to perform http request",
+			"failed to read cache file",
+			"file", cacheFile,
 			"error", err.Error(),
-		)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		slog.Error(
-			"failed to read response body",
-			"error", err.Error(),
-		)
-		os.Exit(1)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		slog.Error(
-			"failed to obtain oauth access token",
-			"status_code", resp.StatusCode,
-			"response_body", string(respBody),
 		)
 		os.Exit(1)
 	}
 
 	if !printToken {
-		fmt.Println(string(respBody))
+		fmt.Println(string(bs))
 		os.Exit(0)
 	}
 
 	var credentials ClientCredentials
-	if err := json.NewDecoder(bytes.NewBuffer(respBody)).Decode(&credentials); err != nil {
+	if err := json.NewDecoder(bytes.NewBuffer(bs)).Decode(&credentials); err != nil {
 		slog.Error(
 			"failed to decode client credentials",
 			"error", err.Error(),
@@ -135,4 +161,47 @@ func main() {
 
 	fmt.Println(credentials.AccessToken)
 	os.Exit(0)
+}
+
+// cacheFilename normalises the endpoint and clientID into a stable "key" that is used to locate
+// a cache file that contains the previous token for this client.
+func cacheFilename(endpoint, clientID string) string {
+	var s = endpoint + clientID
+	return base64.URLEncoding.EncodeToString([]byte(s))
+}
+
+// getCacheFilePath returns the full path to a cache file. Respects XDG_CACHE_HOME if set.
+func getCacheFilePath(endpoint, clientID string) string {
+	var cacheDir = os.Getenv("XDG_CACHE_HOME")
+	if cacheDir == "" {
+		home, _ := homedir.Dir()
+		cacheDir = filepath.Join(home, ".cache")
+	}
+	var oauth2TokenCacheDir = filepath.Join(cacheDir, "oauth2_token")
+	_ = os.MkdirAll(oauth2TokenCacheDir, 0750)
+
+	var oauth2TokenCacheFile = cacheFilename(endpoint, clientID) + ".json"
+	return filepath.Join(oauth2TokenCacheDir, oauth2TokenCacheFile)
+}
+
+// cacheExpired checks the `expires` in a cache file to determine if the file has expired or not.
+func cacheExpired(f string) bool {
+	bs, err := os.ReadFile(f)
+	if err != nil {
+		return true // if we couldn't read the file, then it probably needs to be created
+	}
+	var credentials ClientCredentials
+	if err := json.NewDecoder(bytes.NewBuffer(bs)).Decode(&credentials); err != nil {
+		return true // if we couldn't parse the file, then let's just blat it with valid creds
+	}
+	finfo, err := os.Stat(f)
+	if err != nil {
+		return true // if we couldn't stat the file, then it probably needs to be created/blatted
+	}
+
+	if time.Now().After(finfo.ModTime().Add(time.Duration(credentials.ExpiresIn*int(time.Second)) - (10 * time.Second))) {
+		return true // the current time is past the expiry time (with a 10 second buffer), we should get new creds
+	}
+
+	return false
 }
