@@ -47,7 +47,7 @@ changelog:
 
 brews:
   -
-    name: tid
+    name: oauth2_token
     homepage: "https://github.com/stuarthicks/oauth2_token"
     description: "Convenience wrapper for getting oauth2 tokens to use with other tools, eg. curl."
     license: "MIT"
