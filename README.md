@@ -18,7 +18,7 @@ Copy the example oauth config to `~/.oauth.toml`.
 
 Raw oauth2 response:
 
-    # oauth2_token -c "{client}" | jq
+    # oauth2_token -c "{client}" -d | jq
     {
       "access_token": "hunter2",
       "expires_in": 300,
@@ -27,4 +27,4 @@ Raw oauth2 response:
 
 Use in curl:
 
-    # curl --oauth2-bearer "$(oauth2_token -c "{client}" -p)" https://api.foo.example.com/
+    # curl --oauth2-bearer "$(oauth2_token -c "{client}")" https://api.foo.example.com/

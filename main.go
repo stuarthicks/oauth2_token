@@ -36,16 +36,16 @@ type ClientCredentials struct {
 }
 
 var (
-	config     Config
-	configFile string
-	clientName string
-	printToken bool
+	config            Config
+	configFile        string
+	clientName        string
+	printFullResponse bool
 )
 
 func main() {
 	flag.StringVar(&configFile, "f", "", "Path to config file")
 	flag.StringVar(&clientName, "c", "", "Oauth client name in config file")
-	flag.BoolVar(&printToken, "p", false, "Only print access token")
+	flag.BoolVar(&printFullResponse, "d", false, "Dump full response to STDOUT")
 	flag.Parse()
 
 	if configFile == "" {
@@ -145,7 +145,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if !printToken {
+	if printFullResponse {
 		fmt.Println(string(bs))
 		os.Exit(0)
 	}
