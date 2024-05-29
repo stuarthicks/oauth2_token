@@ -60,3 +60,17 @@ brews:
     commit_author:
       name: goreleaserbot
       email: bot@goreleaser.com
+
+scoops:
+  -
+    name: oauth2_token
+    homepage: "https://github.com/stuarthicks/oauth2_token"
+    description: "Convenience wrapper for getting oauth2 tokens to use with other tools, eg. curl."
+    license: "MIT"
+    directory: bucket
+    repository:
+      owner: stuarthicks
+      name: scoop-bucket
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
